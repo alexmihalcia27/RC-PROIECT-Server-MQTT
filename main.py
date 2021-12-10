@@ -204,6 +204,7 @@ class SERVER:
                         check = CONNECT(client,data)
                         if(check):
                             print("\nClientul s-a conectat la server")
+                            #aici trimite serverul mesaj catre client
 
 
 
