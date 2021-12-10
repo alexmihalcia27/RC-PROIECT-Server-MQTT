@@ -49,17 +49,26 @@ def decode_binary_flag(flag):
     return ret
 
 
+def decode_name(data):
+    index  = struct.unpack('>H',data[0:2])[0]
+    index = int(index)
+    name = data[2: 2+index]
+    name = name.decode('utf-8')
+    return name , data[2+index:]
+
+
+
+
+
 def CONNECT(client, data):
     #acum luam fiecare byte si descifram mesajul
     #https://docs.python.org/3/library/struct.html pentru struct unpack
     lenght_protocol_name =(struct.unpack('>H',data[0:2])[0])
-    print(lenght_protocol_name)
     if lenght_protocol_name!= 4:
         print("Lungimea numelui gresita!!")
         return 0
     protocol_name = data[2:2+lenght_protocol_name]
-    data = data[2+lenght_protocol_name:]
-    print(protocol_name)
+    data = data[2+lenght_protocol_name:]                                                                #update_data
     protocol_name = protocol_name.decode("utf-8")
 
 
@@ -68,9 +77,12 @@ def CONNECT(client, data):
     if protocol_name != 'mqtt' and protocol_name != 'MQTT':
       print("Nume protocol gresit")
       return 0
-    protocol_lvl =struct.unpack('>b',data[0:1])[0]
-    print(protocol_lvl)
 
+
+
+
+
+    protocol_lvl =struct.unpack('>b',data[0:1])[0]
     #verificam protocol lvl
 
     if(protocol_lvl!=4):
@@ -86,28 +98,28 @@ def CONNECT(client, data):
         print("Bit rezerved pe 1 ")
         return 0
 
-    if(flag[6]== 0 ):
+    if(flags[6]== 0 ):
         #presupunem ca este 1 ca sa nu ne complicam momentan
         print("face ceva")
 
 
 
 
-        # verificcam ce fel de qos avem
-    if(flag[4]==flag[3]==0):
+        # verificam ce fel de qos avem
+    if(flags[4]==flags[3]==0):
         print("Folosim qos 0")
-    elif(flag[4]== 1 and flag[3] ==0):
+    elif(flags[4]== 1 and flags[3] ==0):
         print("Folosim qos 1")
-    elif(flag[4]==0 and flag[3] == 1):
+    elif(flags[4]==0 and flags[3] == 1):
         print("Folosim qos 2")
 
 
-    if(flag[2]!=0):
+    if(flags[2]!=0):
         print("Fara will-retain")
 
     keep_alive = (struct.unpack('>H', data[0:2])[0])
-
-    data = data[2:]         #update data
+    data = data[2:]
+    #update data
     if not(keep_alive):
         print("nu are keep_alive")
     ####
@@ -115,54 +127,24 @@ def CONNECT(client, data):
     ###
 
 
-    data = data[2:]         #update data
-    if not(keep_alive):
-        print("nu are keep_alive")
-
-
     #luam id ul clientului
-    id_length = (struct.unpack('>H', data[0:2])[0])
-    id_name = data[2:2 +id_length]
-    data =data[2+id_length :]
-    id_name = id_name.decode("utf-8")
-
+    id_name , data = decode_name(data)
 
     #verificam daca are topic
-    if(flag[5]):
-        will_lenght = (struct.unpack('>H', data[0:2])[0])
-        will_topic = data[2:2+will_lenght]
-        data = data[2+will_lenght]
-        will_topic = will_topic.decode("utf-8")
-        print("are si topic")
+    if(flags[5]):
+        will_topic, data  =decode_name(data)
+        will_message, data = decode_name(data)
+    #verificam numele
 
-
-    if  (flag[5]):
-        #implementam cum este precizat in documentatie"
-        will_lenght = (struct.unpack('>H', data[0:2])[0])
-        will_message= data[2:2 + will_lenght]
-        data = data[2 + will_lenght]
-        will_message = will_message.decode("utf-8")
-        print("are si will_message")
-
-    if(flag[0]):
-        name_length = (struct.unpack('>H', data[0:2])[0])
-        name = data[2:2 + name_length]
-        data = data[2 + will_lenght]
-        name = name.decode("utf-8")
-        if(name != 'nume'):
-            print("Username gresit")
+    if(flags[0]):
+        name, data = decode_name(data)
+        if(name != "user"):
             return 0
-        print("are si nume")
-
-    if(flag[1]):
-        password_length = (struct.unpack('>H', data[0:2])[0])
-        password = data[2:2 + name_length]
-        data = data[2 + will_lenght]
-        password = password.decode("utf-8")
-        if (password != 'parola'):
-            print("Parola gresita")
+    #verificam parola
+    if(flags[1]):
+        password ,data = decode_name(data)
+        if(password!="password"):
             return 0
-        print("are si parola")
 
     return 1
 
@@ -193,9 +175,7 @@ class SERVER:
         self.state = True
         print("Serverul a fost pornit\n")
         self.THREAD_listen = threading.Thread(target=self.listen,
-                                              args=()).start()  # dam drumul si la 2 threaduri unul care primeste mesajul si il adauga in clienti
-        self.THREAD_HANDLE_Clients = threading.Thread(target=self.HANDLE_Clients,
-                                                      args=()).start()  # iar celalat  ce il prelucreaza
+                                              args=()).start()  # dam drumul la thread
 
     def listen(self):
         self.socket.listen()  # serverul ascuta
@@ -204,28 +184,33 @@ class SERVER:
             print("La server s-a concectat " + str(addr))
             client = Client(conn, addr)
             self.clients.append(client)
+            self.THREAD_HANDLE_Clients = threading.Thread(target=self.HANDLE_Clients,
+                                                          args=()).start()
 
     def HANDLE_Clients(self):
         while self.state:
             if len(self.clients) != 0:
                 for client in self.clients:
                     data = client.conn.recv(1024)
-                    print( (str(client.addr)).lstrip('(').lstrip(')')+ "\ta trimis mesajul: " + str(data))
+                    print( (str(client.addr)))
                     control_packet_type = Control_packet_type(struct.unpack('B', data[0:1])[0])
                     print("Tipul pachetului "  +str(control_packet_type))
                     if(control_packet_type == Control_packet_type.CONNECT):
+                        print("----------------------")
                         print(data)
+                        print("----------------------\n\n")
                         start_encoding, finish_encoding = decodeSecondByte(data[1:])  #in documentatie spune sa incepem de la al doilea parametru
                         data =data[1+start_encoding: 1+start_encoding+ finish_encoding]  #trimitem la decode doar fixed-headerul si payloadul
-                        print("ceva")
-                        CONNECT(client,data)
+                        check = CONNECT(client,data)
+                        if(check):
+                            print("\nClientul s-a conectat la server")
 
 
 
 
 if __name__ == '__main__':
     host = '127.0.0.1'
-    port = 5003  # am pirmit o eroare dubiosa daca il pun pe 1884
+    port = 5004  # am pirmit o eroare dubiosa daca il pun pe 1884
     server = SERVER(host, port)
     server.start()
 
