@@ -29,6 +29,10 @@ class SERVER:
         self.clients = []
         self.will_topic = None
         self.will_message = ['','','',' ']
+        self.CpuInfo = None
+        self.CpuUsage = None
+        self.MemoryInfo = None
+        self.DiskInfo = None
         self.topics = {"CpuInfo",
                        "CpuUsage",
                        "MemoryInfo",
@@ -122,6 +126,17 @@ class SERVER:
                     message += data[1:]
                     data = data[1:]
                     topic,data = decode_name(data[1:])
+
+                    if(topic == "CpuInfo"):
+                        self.CpuInfo = message
+                        print(self.CpuInfo)
+                    if(topic == "CpuUsage"):
+                        self.CpuUsage = message
+                    if(topic == "DiskInfo"):
+                        self.DiskInfo = message
+                    if(topic == "MemoryInfo"):
+                        self.MemoryInfo = message
+
                     for aux in self.clients:
                         if(topic in aux.topic):
                             aux.conn.sendall(message)
@@ -199,6 +214,18 @@ class SERVER:
                     client.topic.append(topic)
                     client.qos_message.append(QoS)
                     data = data[1:]
+                    retain_message = []
+
+                    if (topic == "CpuInfo" and self.CpuInfo is not None):
+                        retain_message.append(self.CpuInfo)
+                    if (topic == "CpuUsage" and self.CpuUsage is not None):
+                        retain_message.append(self.CpuUsage)
+                    if (topic == "DiskInfo" and self.DiskInfo is not None):
+                        retain_message.append(self.DiskInfo)
+                    if (topic == "MemoryInfo" and self.MemoryInfo is not None):
+                        retain_message.append(self.MemoryInfo)
+
+
                     while(len(data) != 0):
                         topic, data = decode_name(data)
                         QoS = struct.unpack('B', data[0:1])[0]
@@ -206,7 +233,14 @@ class SERVER:
                         client.type_of_qos.append(qos)
                         data =data[1:]
                         number_of_topics +=1
-
+                        if (topic == "CpuInfo" and self.CpuInfo is not None):
+                            retain_message.append(self.CpuInfo)
+                        if (topic == "CpuUsage" and self.CpuUsage is not None):
+                            retain_message.append(self.CpuUsage)
+                        if (topic == "DiskInfo" and self.DiskInfo is not None):
+                            retain_message.append(self.DiskInfo)
+                        if (topic == "MemoryInfo" and self.MemoryInfo is not None):
+                            retain_message.append(self.MemoryInfo)
 
                 #####SUBACK######
                     message_fixedHEADER= b'\x90'
@@ -221,3 +255,6 @@ class SERVER:
                     message_fixedHEADER += message_variableHEADER
                     message_fixedHEADER += message_payload
                     client.conn.sendall(message_fixedHEADER)
+
+                    for a in range(len(retain_message)):
+                        client.conn.sendall(retain_message[a])
